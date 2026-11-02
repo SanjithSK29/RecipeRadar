@@ -1,0 +1,133 @@
+{
+  "checkedAt": "2026-11-02T07:23:35.105Z",
+  "database": "data/reciperadar.sqlite",
+  "version": 2,
+  "ok": true,
+  "checks": {
+    "integrity": true,
+    "foreignKeysEnabled": true,
+    "foreignKeys": true,
+    "schemaVersion": true,
+    "strictTables": true,
+    "ratingCaches": true,
+    "allergenCaches": true,
+    "mealDateRanges": true,
+    "recipesHaveIngredients": true,
+    "noCaseDuplicateEmails": true,
+    "noSelfSubstitutions": true
+  },
+  "tables": [
+    {
+      "name": "users",
+      "rows": 4,
+      "foreignKeys": 0
+    },
+    {
+      "name": "allergens",
+      "rows": 9,
+      "foreignKeys": 0
+    },
+    {
+      "name": "cuisines",
+      "rows": 6,
+      "foreignKeys": 0
+    },
+    {
+      "name": "dietary_types",
+      "rows": 4,
+      "foreignKeys": 0
+    },
+    {
+      "name": "ingredients",
+      "rows": 25,
+      "foreignKeys": 0
+    },
+    {
+      "name": "recipes",
+      "rows": 12,
+      "foreignKeys": 3
+    },
+    {
+      "name": "ingredient_allergens",
+      "rows": 10,
+      "foreignKeys": 2
+    },
+    {
+      "name": "user_allergens",
+      "rows": 6,
+      "foreignKeys": 2
+    },
+    {
+      "name": "recipe_ingredients",
+      "rows": 44,
+      "foreignKeys": 2
+    },
+    {
+      "name": "ratings",
+      "rows": 3,
+      "foreignKeys": 2
+    },
+    {
+      "name": "favorites",
+      "rows": 6,
+      "foreignKeys": 2
+    },
+    {
+      "name": "meal_plans",
+      "rows": 1,
+      "foreignKeys": 1
+    },
+    {
+      "name": "meal_plan_recipes",
+      "rows": 21,
+      "foreignKeys": 2
+    },
+    {
+      "name": "substitutions",
+      "rows": 6,
+      "foreignKeys": 2
+    },
+    {
+      "name": "sessions",
+      "rows": 2,
+      "foreignKeys": 1
+    }
+  ],
+  "indexes": [
+    "idx_user_allergen_reverse",
+    "idx_ingredient_allergen_reverse",
+    "idx_recipe_ingredient",
+    "idx_recipes_creator",
+    "idx_recipes_cuisine",
+    "idx_recipes_diet",
+    "idx_rating_recipe",
+    "idx_favorites_recipe",
+    "idx_plan_user",
+    "idx_plan_recipe",
+    "idx_substitution_target",
+    "idx_session_user",
+    "idx_session_expiry"
+  ],
+  "triggers": [
+    "rating_insert",
+    "rating_update",
+    "rating_delete",
+    "rating_cache_insert",
+    "rating_cache_update",
+    "allergen_mapping_insert",
+    "allergen_mapping_update",
+    "allergen_mapping_delete",
+    "allergen_flag_insert",
+    "allergen_flag_update",
+    "meal_date_insert",
+    "meal_date_update",
+    "plan_date_update",
+    "recipe_steps_insert",
+    "recipe_steps_update"
+  ],
+  "views": [
+    "recipe_allergen_details",
+    "meal_plan_daily_nutrition",
+    "meal_plan_shopping_list"
+  ]
+}

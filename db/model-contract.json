@@ -1,0 +1,74 @@
+{
+  "users": [
+    "user_id",
+    "name",
+    "email",
+    "password_hash",
+    "role",
+    "age",
+    "diet_goal",
+    "daily_calorie_target",
+    "created_at"
+  ],
+  "allergens": ["allergen_id", "name", "severity"],
+  "user_allergens": ["user_id", "allergen_id"],
+  "cuisines": ["cuisine_id", "name"],
+  "dietary_types": ["diet_id", "name"],
+  "ingredients": [
+    "ingredient_id",
+    "name",
+    "category",
+    "unit",
+    "is_common_allergen"
+  ],
+  "recipes": [
+    "recipe_id",
+    "title",
+    "description",
+    "instructions",
+    "prep_time_minutes",
+    "cook_time_minutes",
+    "servings",
+    "calories_per_serving",
+    "protein_g",
+    "carbs_g",
+    "fat_g",
+    "avg_rating",
+    "total_views",
+    "cuisine_id",
+    "diet_id",
+    "created_by",
+    "is_approved",
+    "created_at"
+  ],
+  "recipe_ingredients": ["recipe_id", "ingredient_id", "quantity", "unit"],
+  "ratings": [
+    "user_id",
+    "recipe_id",
+    "rating_value",
+    "review_text",
+    "created_at"
+  ],
+  "favorites": ["user_id", "recipe_id", "saved_at"],
+  "meal_plans": [
+    "plan_id",
+    "user_id",
+    "plan_name",
+    "start_date",
+    "end_date",
+    "is_active",
+    "created_at"
+  ],
+  "meal_plan_recipes": [
+    "plan_id",
+    "recipe_id",
+    "meal_date",
+    "meal_type",
+    "servings_planned"
+  ],
+  "substitutions": [
+    "ingredient_id_from",
+    "ingredient_id_to",
+    "similarity_score"
+  ]
+}
