@@ -1,7 +1,7 @@
 {
-  "checkedAt": "2026-11-02T07:23:35.105Z",
+  "checkedAt": "2026-11-02T09:51:11.551Z",
   "database": "data/reciperadar.sqlite",
-  "version": 2,
+  "version": 4,
   "ok": true,
   "checks": {
     "integrity": true,
@@ -91,6 +91,16 @@
       "name": "sessions",
       "rows": 2,
       "foreignKeys": 1
+    },
+    {
+      "name": "vector_sync_outbox",
+      "rows": 0,
+      "foreignKeys": 0
+    },
+    {
+      "name": "vector_documents",
+      "rows": 12,
+      "foreignKeys": 1
     }
   ],
   "indexes": [
@@ -106,7 +116,9 @@
     "idx_plan_recipe",
     "idx_substitution_target",
     "idx_session_user",
-    "idx_session_expiry"
+    "idx_session_expiry",
+    "idx_vector_outbox_created",
+    "idx_vector_payload_diet"
   ],
   "triggers": [
     "rating_insert",

@@ -25,6 +25,32 @@ export const db = new DatabaseSync(filename);
 db.exec(
   "PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA recursive_triggers=ON;",
 );
+db.function("reciperadar_portion_calories", (calories, portions) => {
+  const c = Number(calories),
+    p = Number(portions);
+  return Number.isFinite(c) && Number.isFinite(p) && p >= 0
+    ? Math.round(c * p * 100) / 100
+    : null;
+});
+db.function("reciperadar_flavor_similarity", (left, right) => {
+  const a = new Set(
+    String(left ?? "")
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean),
+  );
+  const b = new Set(
+    String(right ?? "")
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean),
+  );
+  const u = new Set([...a, ...b]);
+  return u.size
+    ? Math.round(([...a].filter((x) => b.has(x)).length / u.size) * 10000) /
+        10000
+    : 0;
+});
 migrate(db, filename);
 export const all = (sql: string, ...args: any[]) =>
   db.prepare(sql).all(...args) as any[];
@@ -55,6 +81,13 @@ if (
       "demo@reciperadar.app",
       hash("RecipeRadar123!"),
       "user",
+    );
+    run(
+      "INSERT INTO users(name,email,password_hash,role) VALUES(?,?,?,?)",
+      "RecipeRadar Admin",
+      "admin@reciperadar.app",
+      hash("AdminRadar123!"),
+      "admin",
     );
     for (const n of [
       "Milk",
@@ -350,14 +383,16 @@ if (
     run("INSERT INTO favorites(user_id,recipe_id) VALUES(1,1)");
   });
 }
-export function recipes(userId?: number) {
+export function recipes(userId?: number, includeMine = false) {
   const allergies = userId
     ? all("SELECT allergen_id FROM user_allergens WHERE user_id=?", userId).map(
         (a) => a.allergen_id,
       )
     : [];
   return all(
-    "SELECT r.*,c.name cuisine,d.name diet FROM recipes r JOIN cuisines c USING(cuisine_id) JOIN dietary_types d USING(diet_id) WHERE is_approved=1 ORDER BY recipe_id",
+    "SELECT r.*,c.name cuisine,d.name diet FROM recipes r JOIN cuisines c USING(cuisine_id) JOIN dietary_types d USING(diet_id) WHERE is_approved=1 OR (?=1 AND created_by=?) ORDER BY recipe_id",
+    includeMine ? 1 : 0,
+    userId ?? 0,
   )
     .map((r) => ({
       ...r,

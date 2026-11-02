@@ -51,3 +51,36 @@ WHERE NOT EXISTS (
  SELECT 1 FROM ingredient_allergens ia JOIN user_allergens ua USING(allergen_id)
  WHERE ia.ingredient_id=b.ingredient_id AND ua.user_id=1
 ) ORDER BY s.similarity_score DESC;
+
+
+-- 8. CTE: active plans with their daily nutrition totals.
+WITH active_plans AS (
+ SELECT plan_id,user_id,plan_name FROM meal_plans WHERE is_active=1
+)
+SELECT p.plan_name,n.meal_date,n.calories,n.protein_g,n.carbs_g,n.fat_g
+FROM active_plans p JOIN meal_plan_daily_nutrition n USING(plan_id)
+ORDER BY p.plan_name,n.meal_date;
+
+-- 9. Recursive CTE: generate the seven dates in a plan (SQLite).
+WITH RECURSIVE plan_days(plan_id,meal_date,end_date) AS (
+ SELECT plan_id,start_date,end_date FROM meal_plans WHERE plan_id=:plan_id
+ UNION ALL
+ SELECT plan_id,date(meal_date,'+1 day'),end_date FROM plan_days
+ WHERE meal_date<end_date
+) SELECT plan_id,meal_date FROM plan_days ORDER BY meal_date;
+
+-- 10. SQL user-defined functions registered by lib/db.ts.
+SELECT title,reciperadar_portion_calories(calories_per_serving,2) AS two_serving_kcal
+FROM recipes WHERE recipe_id=:recipe_id;
+SELECT reciperadar_flavor_similarity('creamy bright','smooth fresh') AS descriptor_similarity;
+
+-- 11. DML examples (use a transaction; IDs below identify demo rows).
+BEGIN IMMEDIATE;
+INSERT INTO favorites(user_id,recipe_id) VALUES(1,1) ON CONFLICT DO NOTHING;
+UPDATE users SET diet_goal='Vegan' WHERE user_id=1;
+DELETE FROM favorites WHERE user_id=1 AND recipe_id=1;
+ROLLBACK; -- Demonstration only: leaves sample data unchanged.
+
+-- Parameterized record create/update/delete is implemented in /api/recipe.
+-- Approved recipe create/update enqueues an atomic outbox row; vector_sync_outbox
+-- workers UPSERT the corresponding Qdrant point. Recipe removal queues its tombstone.

@@ -1,4 +1,4 @@
--- RecipeRadar schema v2. SQLite 3.37+ STRICT tables; Node 24 bundles SQLite.
+-- RecipeRadar schema v4. SQLite 3.37+ STRICT tables; Node 24 bundles SQLite.
 -- All original model attributes remain. Extensions are documented in docs/database-audit.md.
 PRAGMA foreign_keys = ON;
 
@@ -135,6 +135,25 @@ CREATE TABLE sessions (
   expires_at INTEGER NOT NULL CHECK(expires_at>0)
 ) STRICT;
 
+-- Durable transactional outbox bridges SQLite source records to Qdrant.
+-- recipe_id intentionally has no FK so delete tombstones survive row deletion.
+CREATE TABLE vector_sync_outbox (
+  outbox_id INTEGER PRIMARY KEY,
+  recipe_id INTEGER NOT NULL,
+  operation TEXT NOT NULL CHECK(operation IN ('upsert','delete')),
+  payload TEXT CHECK(payload IS NULL OR json_valid(payload)),
+  attempts INTEGER NOT NULL DEFAULT 0 CHECK(attempts>=0),
+  last_error TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(recipe_id,operation)
+) STRICT;
+CREATE TABLE vector_documents (
+  recipe_id INTEGER PRIMARY KEY NOT NULL REFERENCES recipes(recipe_id) ON DELETE CASCADE,
+  embedding TEXT NOT NULL CHECK(json_valid(embedding) AND json_type(embedding)='array' AND json_array_length(embedding)=128),
+  payload TEXT NOT NULL CHECK(json_valid(payload) AND json_type(payload)='object'),
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+) STRICT;
+
 CREATE INDEX idx_user_allergen_reverse ON user_allergens(allergen_id);
 CREATE INDEX idx_ingredient_allergen_reverse ON ingredient_allergens(allergen_id);
 CREATE INDEX idx_recipe_ingredient ON recipe_ingredients(ingredient_id);
@@ -148,6 +167,8 @@ CREATE INDEX idx_plan_recipe ON meal_plan_recipes(recipe_id);
 CREATE INDEX idx_substitution_target ON substitutions(ingredient_id_to);
 CREATE INDEX idx_session_user ON sessions(user_id);
 CREATE INDEX idx_session_expiry ON sessions(expires_at);
+CREATE INDEX idx_vector_outbox_created ON vector_sync_outbox(created_at);
+CREATE INDEX idx_vector_payload_diet ON vector_documents(json_extract(payload,'$.diet'));
 
 -- Maintain both OLD and NEW recipes when a rating is reassigned via SQL.
 CREATE TRIGGER rating_insert AFTER INSERT ON ratings BEGIN

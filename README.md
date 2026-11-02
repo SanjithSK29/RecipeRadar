@@ -1,151 +1,172 @@
-# RecipeRadar | Full Stack DBMS Project
+# RecipeRadar
 
-**RecipeRadar is a database-centered recipe discovery and meal-planning application**, built for the DBMS Level-3 Lab. It demonstrates relational modelling, normalized lookup and junction tables, primary and foreign keys, integrity constraints, SQL triggers, views, indexes, transactions, schema migrations and verified database backups in a working application.
+RecipeRadar is a full-stack recipe discovery and meal-planning application built as a DBMS Level 3 project. Its focus is the database: the schema, keys, referential integrity, constraints, triggers, views, SQL query set, migrations, authentication, role checks, and a persistent vector-search index are all part of the working application.
 
-The database is the foundation of the project: users, recipes, ingredients, allergies, reviews, favorites and meal plans are stored as related records. The Next.js interface and API read and modify that relational data; the application does not replace the database's integrity rules.
+## Contents
 
-The project follows the supplied RecipeRadar brief and modified relational model. It preserves all 13 source domain tables and attributes, then adds ingredient-to-allergen mapping for specific allergy detection and sessions for authentication. [The database audit](docs/database-audit.md) explains differences between the source drawings and implemented schema, including the meal-plan key decision.
+- [Features](#features)
+- [Technology stack](#technology-stack)
+- [Run locally](#run-locally)
+- [Database design](#database-design)
+- [SQL work](#sql-work)
+- [Vector database and RUD](#vector-database-and-rud)
+- [Authentication and database roles](#authentication-and-database-roles)
+- [API](#api)
+- [Project evidence and report](#project-evidence-and-report)
+- [Verification and limitations](#verification-and-limitations)
 
-## Run
+## Features
 
-Requires **Node.js 24 LTS** (uses built-in `node:sqlite`) and npm.
+- Search and filter recipes by cuisine, diet, calories, ingredients, and flavor.
+- Register and log in; save favorites, rate recipes, record allergies, and create meal plans.
+- Scale nutrition and shopping-list quantities by planned servings.
+- Submit recipes for admin review; administrators can approve/reject submissions and manage roles.
+- Rank recipes by flavor similarity through a persistent 128-dimensional vector index.
+- Safely migrate older local databases with a consistent backup and rollback on invalid data.
+
+## Technology stack
+
+| Layer | Technology |
+| --- | --- |
+| Frontend and server/API | Next.js 16 App Router, React 19, TypeScript, Route Handlers |
+| Relational database | SQLite 3.37+ STRICT tables, accessed with Node.js 24 `node:sqlite` |
+| Vector database | SQLite JSON vector store by default; optional Qdrant service through Docker Compose |
+| Authentication | Salted scrypt password hashes, random opaque session cookie, SHA-256 session-token hashes stored in SQLite |
+| UI | React/CSS, Lucide icons |
+
+SQLite is chosen for a reproducible, local, single-server academic application. It provides real relational constraints and transactions with no separate database service. Qdrant is optional for deployments that want a dedicated vector service; the default index works without Docker or an external account.
+
+## Run locally
+
+Requirements: Node.js 24 or newer (the application uses its built-in SQLite module).
 
 ```bash
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000. The schema and sample data initialize automatically on first request. No database service, API key, or paid account is required.
+Open http://localhost:3000. The app creates `data/reciperadar.sqlite` on first run, installs the current schema, and seeds demonstration recipes. The first empty database also creates these demonstration accounts:
 
-Demo login: **demo@reciperadar.app** / **RecipeRadar123!**. You can also register a separate account. Demo recipes belong to the demo user and can be edited through My kitchen.
+- User: `demo@reciperadar.app` / `RecipeRadar123!`
+- Admin: `admin@reciperadar.app` / `AdminRadar123!`
+
+These are local demo credentials only. Do not expose them in a public deployment. The existing working database is not reset or re-seeded by code changes. To use a separate database file, set `DATABASE_PATH`.
+
+Build and run the production server:
 
 ```bash
-npm test          # isolated database integrity tests
-npm run build    # production compilation and TypeScript checks
-npm start        # serve production build
+npm run build
+npm start
 ```
 
-## Features
-
-- Recipe search across names, descriptions and ingredients; cuisine/diet/time filters; rating/time/calorie sorting.
-- Recipe detail pages with ingredients, cooking steps, per-serving nutrition, allergen information and flavor recommendations.
-- Registration, login, logout, salted scrypt password hashes, hashed opaque session tokens and HttpOnly cookies. Sessions expire after seven days. Writes validate request origins when supplied.
-- Persistent per-user favorites, allergy selections, diet preference and calorie target.
-- Create, edit and delete recipes with relational ingredient quantities; ownership is enforced by the API.
-- One review/rating per user per recipe; rating averages maintained by SQL triggers.
-- Ingredient swaps with curated similarity scores and personalized allergen flags.
-- Seven-day meal plans with breakfast, lunch and dinner; excludes recipes with recorded allergy conflicts, respects diet category and scales portions toward the calorie target. Generation fails clearly when a meal category has no matching recipes.
-- Daily calorie totals and aggregated shopping lists. Plans can be deleted.
-- Responsive layout for phone, tablet and desktop.
-
-## Project structure
-
-- `app/page.tsx`: interactive application and forms.
-- `app/globals.css`: responsive styling.
-- `app/api/[...path]/route.ts`: JSON backend.
-- `lib/db.ts`: database initialization, password functions, seed data, queries and transaction helper.
-- `db/schema.sql`: tables, foreign keys, checks, indexes and triggers.
-- `db/queries.sql`: join, aggregation and nested-query examples for a demonstration.
-- `tests/database.test.ts`: isolated test database, password checks, allergen joins, trigger checks and rollback checks.
-- `data/reciperadar.sqlite`: auto-created database (ignored by Git).
-
-Set `DATABASE_PATH` to an alternative writable SQLite file if needed. The application requires a persistent Node server and writable disk; ephemeral/serverless hosting will need an external database adaptation. To reset the local sample data, stop the server and delete the `data` directory, then restart. This deletes local accounts, favorites, reviews and plans.
-
-## DBMS design and implementation
-
-The local database is a persistent **SQLite database** at `data/reciperadar.sqlite`. The schema is created and seeded automatically when the app first starts. Node.js 24 uses its built-in `node:sqlite` driver, so no separate database server or paid service is required.
-
-The schema contains 15 STRICT tables: the 13 tables from the modified relational model, plus `ingredient_allergens` and `sessions`. STRICT storage rules, explicit `NOT NULL` declarations, unique and composite keys, and `CHECK` constraints protect data even when a write bypasses the frontend. Foreign keys connect every relationship and define deletion behavior. Indexes support common joins and filters.
-
-Triggers maintain recipe rating averages and ingredient allergen flags, preventing these cached values from drifting away from their source rows. Meal-plan triggers keep meal dates inside each plan's date range. Three SQL views provide ingredient-level allergen details, daily nutrition totals, and portion-scaled shopping lists. Recipe edits, preference changes, and weekly plan generation use transactions to keep related changes atomic.
-
-Schema version 2 is recorded in SQLite's `user_version`. The migration runner saves a consistent backup, upgrades transactionally, verifies row counts and foreign keys, and rolls back if legacy data cannot meet the stronger constraints. Use `npm run db:backup` for a consistent snapshot while the app is running in WAL mode.
-
-This repository includes SQL examples in [`db/queries.sql`](db/queries.sql), the source attribute contract in [`db/model-contract.json`](db/model-contract.json), and the original schema for migration tests in [`db/migrations/001-original.sql`](db/migrations/001-original.sql). The diagram mapping and schema decisions are described in [`docs/database-audit.md`](docs/database-audit.md).
-
-### Relational model
-
-Preserves all 13 tables in the PDF's modified model: `users`, `allergens`, `user_allergens`, `cuisines`, `dietary_types`, `ingredients`, `recipes`, `recipe_ingredients`, `ratings`, `favorites`, `meal_plans`, `meal_plan_recipes`, `substitutions`.
-
-Adds `ingredient_allergens` because a boolean `is_common_allergen` cannot identify which allergy an ingredient represents; adds `sessions` for authentication. Recipe image, meal category and flavor descriptors support discovery and planning. Join tables use composite primary keys. Meal slots are unique per plan/date/type. Foreign keys prevent orphan records, transactions keep multi-table writes atomic, and CHECK constraints validate ratings, quantities and nutrition. Unique constraints prevent duplicate accounts, favorites and reviews. `avg_rating` is the model's denormalized derived field and stays synchronized with triggers.
-
-```mermaid
-erDiagram
- users ||--o{ user_allergens : has
- allergens ||--o{ user_allergens : identifies
- ingredients ||--o{ ingredient_allergens : contains
- allergens ||--o{ ingredient_allergens : identifies
- users ||--o{ recipes : creates
- cuisines ||--o{ recipes : classifies
- dietary_types ||--o{ recipes : categorizes
- recipes ||--o{ recipe_ingredients : contains
- ingredients ||--o{ recipe_ingredients : used_in
- users ||--o{ favorites : saves
- recipes ||--o{ favorites : saved_as
- users ||--o{ ratings : gives
- recipes ||--o{ ratings : receives
- users ||--o{ meal_plans : creates
- meal_plans ||--o{ meal_plan_recipes : includes
- recipes ||--o{ meal_plan_recipes : appears_in
- ingredients ||--o{ substitutions : original
- ingredients ||--o{ substitutions : replacement
- users ||--o{ sessions : authenticates
-```
-
-The source ER drawing omits `favorites`, which appears in its relational model; RecipeRadar includes it. The implemented meal-entry key is `(plan_id, meal_date, meal_type)`: it enforces one recipe per slot and allows a recipe to recur on another day. See the audit for details.
-
-## API
-
-All writes accept JSON and return `{ok:true}` or `{error:string}`; account endpoints return user data. Private operations derive ownership from the session, never a client-provided user ID.
-
-| Method | Endpoint             | Purpose                                                       |
-| ------ | -------------------- | ------------------------------------------------------------- |
-| GET    | `/api/bootstrap`     | Recipes, lookups and current user                             |
-| POST   | `/api/auth`          | `mode: login/register/logout`, email, password, optional name |
-| POST   | `/api/profile`       | name, diet_goal, daily_calorie_target, allergen ID array      |
-| POST   | `/api/favorite`      | Toggle recipe_id                                              |
-| POST   | `/api/recipe`        | Create/update recipe; optional recipe_id                      |
-| POST   | `/api/recipe-delete` | Delete owned recipe_id                                        |
-| POST   | `/api/rating`        | recipe_id, rating (1–5), review                               |
-| GET    | `/api/reviews/:id`   | Public reviews                                                |
-| GET    | `/api/substitutions` | Ingredient alternatives and allergen conflicts                |
-| GET    | `/api/plans`         | Current user's plans and meals                                |
-| POST   | `/api/plan`          | Generate plan from ISO start_date                             |
-| POST   | `/api/plan-delete`   | Delete owned plan_id                                          |
-
-## Scope and limitations
-
-This is a locally runnable academic project, not a clinical nutrition service. Allergen checks cover explicit ingredient mappings only, not packaging or cross-contact. Starter nutrition and recipes are demonstration data, not laboratory-verified measurements. Flavor similarity uses Jaccard overlap of curated descriptors; substitution scores are curated estimates, not embeddings or a trained semantic model. Meal planning is deterministic and calorie-based, not a clinical optimizer. Diet categories follow the PDF's single diet foreign key, so a Vegan filter matches recipes explicitly classified Vegan. Sample recipe photos use Unsplash and web fonts use Google Fonts; the app remains usable with system fonts when offline, but remote photos need connectivity. No hosted deployment, email verification, password recovery, production rate-limit service or admin moderation console is included. For a public deployment, add these account protections and replace the shared demo credentials.
-
-Next.js API design follows the official [Route Handlers](https://nextjs.org/docs/app/api-reference/file-conventions/route) and [cookies](https://nextjs.org/docs/app/api-reference/functions/cookies) documentation.
-
-## Optional Docker run
+Optional Qdrant backend (requires Docker):
 
 ```bash
 docker compose up --build
 ```
 
-Open http://localhost:3000. The named `recipe-data` volume persists your database across container replacement. The Docker setup is included for convenience; local Node execution is the verified run path.
+The Compose configuration sets `QDRANT_URL` and persists Qdrant data in its named volume. Without `QDRANT_URL`, the app uses the local SQLite JSON-vector index.
 
-To run HTTP integration checks against an already running local server:
+## Database design
 
-```bash
-npm run test:api
-```
+The implementation has **17 STRICT tables**: the 13 tables in the supplied modified relational model, plus `ingredient_allergens` (precise many-to-many allergy mapping), `sessions` (authentication), `vector_sync_outbox` (durable vector updates/deletions), and `vector_documents` (local vector records).
 
-These create a disposable account and test review in the active database. Prefer a throwaway `DATABASE_PATH` when running them repeatedly.
+- Primary keys identify every row. Join tables use composite keys; foreign keys explicitly define delete behavior.
+- `NOT NULL`, `UNIQUE`, `CHECK`, JSON/date validation, and foreign-key constraints protect data even when writes bypass the interface.
+- Triggers maintain the derived recipe rating and ingredient allergen caches and ensure meal dates remain inside a plan's range.
+- Views expose ingredient allergen details, per-day nutrition, and scaled shopping lists.
+- Transactions group recipe edits, profile changes, plan creation, and vector outbox changes.
+- The migration runner uses `PRAGMA user_version`, makes a consistent `VACUUM INTO` backup, copies data transactionally, recomputes derived values, checks row counts/FKs, and rolls back on failure.
 
-## Database verification and backups
+### Diagrams and model notes
 
-The database has been hardened to schema **v2** with STRICT tables, explicit non-null foreign keys, validated date ranges, synchronized rating/allergen caches and indexed relationships. Existing v1 data upgrades atomically with a consistent backup first.
+- ER overview image: [`docs/figures/er-diagram.png`](docs/figures/er-diagram.png)
+- Editable draw.io model: [`docs/figures/reciperadar-erd.drawio`](docs/figures/reciperadar-erd.drawio)
+- Light-background relational schema: [`docs/figures/relational-schema.png`](docs/figures/relational-schema.png)
+- Source PDF attribute contract: [`db/model-contract.json`](db/model-contract.json)
+- Detailed source-to-implementation reconciliation and constraints: [`docs/database-audit.md`](docs/database-audit.md)
 
-Read [the diagram mapping and audit](docs/database-audit.md) for the exact preserved attributes, intentional changes, normalization tradeoffs and remaining boundaries. [The verification report](docs/database-verification.json) records a point-in-time check of the actual local database. The audit does not certify the absence of every possible defect.
+The ER diagram has associative/weak entities `user_allergens`, `ingredient_allergens`, `recipe_ingredients`, `ratings`, `favorites`, and `meal_plan_recipes`. `favorites` is in the supplied relational model but omitted from its ER drawing; this project retains it. The meal-plan recipe key is `(plan_id, meal_date, meal_type)` so a slot cannot hold multiple recipes and a recipe can recur on another date. The exact deliberate differences are documented in the audit.
+
+The canonical DDL is [`db/schema.sql`](db/schema.sql). Database version 4 is implemented in [`lib/migrations.ts`](lib/migrations.ts). Live data and backups are local, ignored files under `data/`; they are not committed to Git.
+
+## SQL work
+
+[`db/queries.sql`](db/queries.sql) contains runnable examples of:
+
+- Multi-table joins and aggregate queries
+- Correlated `NOT EXISTS` queries for allergy-aware filtering
+- Shopping-list and meal nutrition queries
+- A standard CTE and a recursive CTE that generates dates in a meal plan
+- SQL UDFs for portion calories and flavor descriptor similarity
+- Transaction-wrapped insert, update, and delete examples
+
+The schema defines integrity triggers and three read views. SQLite does not implement SQL stored-procedure DDL. The corresponding multi-step transactional operations are implemented as server functions in `lib/db.ts` and the API Route Handler; the two SQLite UDFs are registered per application connection. The report calls out this engine-specific limitation rather than claiming a native stored procedure.
+
+Useful commands:
 
 ```bash
 npm run db:audit
 npm run db:audit -- docs/database-verification.json
 npm run db:backup
-npm test
 ```
 
-`lib/migrations.ts` owns schema upgrades; `db/model-contract.json` lists the PDF's original attributes; `db/migrations/001-original.sql` retains the original implementation for migration tests. The live database is `data/reciperadar.sqlite`. Inspect it with a SQLite-aware client; do not copy just that file while WAL writes may be active. Backups contain account data and should remain private.
+## Vector database and RUD
+
+The vector index stores one normalized 128-number embedding and JSON recipe payload per approved recipe. Recipe title, description, cuisine, diet, meal type, ingredient names, and curated flavor tags are embedded with a deterministic feature-hashing function and synonym map. Search ranks stored vectors with cosine similarity. This is an explainable baseline, not a trained language model.
+
+The default SQLite backend stores embeddings in `vector_documents` and uses JSON validity/length constraints. The optional Qdrant backend stores the same IDs, vectors, and payloads in collection `reciperadar_recipes` (cosine distance). The transactional `vector_sync_outbox` makes recipe changes durable before the index is updated. A synchronization failure is retained with an attempt count and error for later retry.
+
+The API supports vector create/update, read, search, and delete operations at `POST /api/vector` (`action` values: `upsert`, `read`, `search`, `delete`); GET returns backend/index status. Approved recipe writes enqueue and synchronize an upsert; recipe deletion queues a tombstone; admin approval indexes the recipe. User-created unapproved drafts are excluded from public search.
+
+To inspect index rows in SQLite:
+
+```sql
+SELECT recipe_id, json_array_length(embedding) AS dimensions, json_extract(payload,'$.title') AS title
+FROM vector_documents ORDER BY recipe_id;
+```
+
+## Authentication and database roles
+
+The database `users.role` column constrains values to `user` or `admin`. Registration always creates a `user`; API handlers independently check the authenticated session's role before moderation and role-management operations. Recipe ownership is also checked server-side. The last admin cannot be demoted through the application. Session cookies are HTTP-only, same-site, and contain a random token whose SHA-256 hash alone is stored in the `sessions` table.
+
+For an existing local account, a database owner may deliberately grant admin access with:
+
+```bash
+npm run db:promote-admin -- your-email@example.com
+```
+
+Run that command only for the account you personally intend to make an administrator. This operation changes authorization privileges. A fresh database instead has the demonstration admin listed above.
+
+## API
+
+All write routes accept JSON and return `{ "ok": true }` or `{ "error": "..." }`. Private operations derive ownership from the session.
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| GET | `/api/bootstrap` | Recipes, lookups, current account |
+| POST | `/api/auth` | Register, log in, log out |
+| POST | `/api/profile` | Profile, calorie target, allergy preferences |
+| POST | `/api/favorite` | Toggle a favorite |
+| POST | `/api/recipe` | Submit or update an owned recipe |
+| POST | `/api/recipe-delete` | Delete an owned recipe |
+| POST | `/api/rating` | Add/update a 1–5 rating and review |
+| GET | `/api/reviews/:id` | Public recipe reviews |
+| GET | `/api/substitutions` | Ingredient substitutions and allergy conflicts |
+| GET | `/api/plans` | Current account's meal plans |
+| POST | `/api/plan` | Generate a meal plan |
+| POST | `/api/plan-delete` | Delete an owned plan |
+| GET/POST | `/api/vector` | Index status and vector RUD/search |
+| GET | `/api/admin/recipes` | Admin-only pending recipes and account list |
+| POST | `/api/admin/review` | Admin-only recipe approval/rejection |
+| POST | `/api/admin/role` | Admin-only role assignment |
+
+## Project evidence and report
+
+The complete submission report and its evidence are in `docs/`. It includes the problem statement, requirements and technology rationale, entity and non-simple attribute lists, both data-model diagrams, SQL DDL/DML, vector commands, populated result tables, application screenshots, project tree, and a criterion-by-criterion rubric status. Start at [`docs/RecipeRadar_DBMS_Project_Report.docx`](docs/RecipeRadar_DBMS_Project_Report.docx) and use the artifacts it references.
+
+## Verification and limitations
+
+The database audit writes a privacy-safe point-in-time result to [`docs/database-verification.json`](docs/database-verification.json). Run it again after changing local data. `npm run build` validates the production frontend and server compilation; `npm test` and `npm run test:api` are also available for the automated schema and API suites.
+
+This is an academic local application. Nutrition and sample recipes are illustrative; allergen checks cover only explicitly mapped ingredients and cannot detect package warnings or cross-contact. Flavor vectors use curated tags and deterministic feature hashing, not a trained semantic model. SQLite is not a multi-server database and does not supply native stored-procedure DDL. A production release would need secret rotation, password recovery, rate limiting, operational monitoring, and a deployment database plan.

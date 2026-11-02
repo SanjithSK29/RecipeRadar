@@ -9,6 +9,15 @@ import {
   verify,
   recipes,
 } from "../../../lib/db";
+import {
+  bootstrapIndex,
+  collectionInfo,
+  deleteVector,
+  getVector,
+  recipeDocument,
+  searchVector,
+  syncOutbox,
+} from "../../../lib/vector";
 export const runtime = "nodejs";
 const digest = (s: string) => createHash("sha256").update(s).digest("hex");
 function user(req: NextRequest) {
@@ -32,6 +41,20 @@ function safe(u: any) {
     ).map((x) => x.allergen_id),
   };
 }
+function enqueueVector(recipeId: number, operation: "upsert" | "delete") {
+  const point = operation === "upsert" ? recipeDocument(recipeId) : null;
+  check(operation === "delete" || point, "Could not create recipe vector");
+  run(
+    `INSERT INTO vector_sync_outbox(recipe_id,operation,payload) VALUES(?,?,?)
+     ON CONFLICT(recipe_id,operation) DO UPDATE SET payload=excluded.payload,attempts=0,last_error=NULL,created_at=CURRENT_TIMESTAMP`,
+    recipeId,
+    operation,
+    point ? JSON.stringify(point) : null,
+  );
+}
+function requireAdmin(u: any) {
+  check(u?.role === "admin", "Administrator permission required");
+}
 function check(ok: any, message: string) {
   if (!ok) throw new Error(message);
 }
@@ -47,7 +70,7 @@ async function handle(req: NextRequest) {
       if (path === "bootstrap")
         return NextResponse.json({
           user: safe(u),
-          recipes: recipes(id),
+          recipes: recipes(id, !!id),
           allergens: all("SELECT * FROM allergens"),
           ingredients: all("SELECT * FROM ingredients"),
           cuisines: all("SELECT * FROM cuisines"),
@@ -67,6 +90,31 @@ async function handle(req: NextRequest) {
             ),
           })),
         );
+      }
+      if (path === "admin/recipes") {
+        requireAdmin(u);
+        return NextResponse.json({
+          pending: all(
+            "SELECT r.*,u.name creator,c.name cuisine,d.name diet FROM recipes r JOIN users u ON u.user_id=r.created_by JOIN cuisines c USING(cuisine_id) JOIN dietary_types d USING(diet_id) WHERE is_approved=0 ORDER BY created_at",
+          ),
+          users: all(
+            "SELECT user_id,name,email,role,created_at FROM users ORDER BY user_id",
+          ),
+        });
+      }
+      if (path === "vector") {
+        check(u, "Sign in to use flavor search");
+        await syncOutbox();
+        const indexed = await bootstrapIndex();
+        await syncOutbox();
+        const info = await collectionInfo();
+        return NextResponse.json({
+          backend: info.backend,
+          collection: info.result?.status,
+          vectors: info.result?.points_count ?? 0,
+          pending: Number(one("SELECT COUNT(*) n FROM vector_sync_outbox").n),
+          indexed,
+        });
       }
       if (path === "substitutions")
         return NextResponse.json(
@@ -162,6 +210,113 @@ async function handle(req: NextRequest) {
       return r;
     }
     check(u, "Sign in to continue");
+    if (path === "admin/review") {
+      requireAdmin(u);
+      check(integer(b.recipe_id, 1, Number.MAX_SAFE_INTEGER), "Invalid recipe");
+      check(typeof b.approved === "boolean", "Approval must be true or false");
+      check(
+        one("SELECT 1 FROM recipes WHERE recipe_id=?", b.recipe_id),
+        "Recipe not found",
+      );
+      transaction(() => {
+        run(
+          "UPDATE recipes SET is_approved=? WHERE recipe_id=?",
+          b.approved ? 1 : 0,
+          b.recipe_id,
+        );
+        enqueueVector(b.recipe_id, b.approved ? "upsert" : "delete");
+      });
+      await syncOutbox();
+      return NextResponse.json({ ok: true });
+    }
+    if (path === "admin/role") {
+      requireAdmin(u);
+      check(integer(b.user_id, 1, Number.MAX_SAFE_INTEGER), "Invalid user");
+      check(["user", "admin"].includes(b.role), "Role must be user or admin");
+      check(
+        one("SELECT 1 FROM users WHERE user_id=?", b.user_id),
+        "User not found",
+      );
+      if (
+        b.role === "user" &&
+        one("SELECT role FROM users WHERE user_id=?", b.user_id)?.role ===
+          "admin"
+      )
+        check(
+          Number(one("SELECT COUNT(*) n FROM users WHERE role='admin'").n) > 1,
+          "Cannot remove the last administrator",
+        );
+      run("UPDATE users SET role=? WHERE user_id=?", b.role, b.user_id);
+      return NextResponse.json({ ok: true });
+    }
+    if (path === "vector") {
+      const action = b.action;
+      if (action === "search") {
+        check(
+          typeof b.query === "string" &&
+            b.query.trim().length >= 2 &&
+            b.query.length <= 300,
+          "Enter a search of 2–300 characters",
+        );
+        await bootstrapIndex();
+        const response: any = await searchVector(
+          b.query.trim(),
+          Math.min(Math.max(Number(b.limit) || 8, 1), 20),
+        );
+        const ids = (response.result || [])
+          .map((hit: any) => Number(hit.id))
+          .filter(Number.isSafeInteger);
+        const visible = ids
+          .map((rid: number) => ({
+            recipe: recipes(id, true).find((r) => r.recipe_id === rid),
+            score: response.result.find((hit: any) => Number(hit.id) === rid)
+              ?.score,
+          }))
+          .filter(
+            (item: any) =>
+              item.recipe &&
+              (item.recipe.is_approved || item.recipe.created_by === id),
+          );
+        return NextResponse.json({ results: visible });
+      }
+      check(integer(b.recipe_id, 1, Number.MAX_SAFE_INTEGER), "Invalid recipe");
+      const recipe = one(
+        "SELECT recipe_id,created_by,is_approved FROM recipes WHERE recipe_id=?",
+        b.recipe_id,
+      );
+      check(recipe, "Recipe not found");
+      check(
+        u.role === "admin" || recipe.created_by === id,
+        "You can only manage vectors for your recipes",
+      );
+      if (action === "read")
+        return NextResponse.json(await getVector(Number(b.recipe_id)));
+      if (action === "upsert") {
+        check(recipe.is_approved, "Only approved recipes are indexed");
+        await bootstrapIndex();
+        await syncOutbox();
+        return NextResponse.json({
+          ok: true,
+          vector: await getVector(Number(b.recipe_id)),
+        });
+      }
+      if (action === "delete") {
+        check(
+          !one(
+            "SELECT 1 FROM meal_plan_recipes WHERE recipe_id=?",
+            b.recipe_id,
+          ),
+          "Remove this recipe from meal plans before deleting it",
+        );
+        transaction(() => {
+          enqueueVector(Number(b.recipe_id), "delete");
+          run("DELETE FROM recipes WHERE recipe_id=?", b.recipe_id);
+        });
+        await syncOutbox();
+        return NextResponse.json({ ok: true });
+      }
+      throw new Error("Action must be search, read, upsert, or delete");
+    }
     if (path === "profile") {
       check(
         typeof b.name === "string" &&
@@ -203,7 +358,11 @@ async function handle(req: NextRequest) {
       });
     } else if (path === "favorite") {
       check(
-        one("SELECT 1 FROM recipes WHERE recipe_id=?", b.recipe_id),
+        one(
+          "SELECT 1 FROM recipes WHERE recipe_id=? AND (is_approved=1 OR created_by=?)",
+          b.recipe_id,
+          id,
+        ),
         "Recipe not found",
       );
       if (
@@ -231,7 +390,10 @@ async function handle(req: NextRequest) {
         "Review is too long",
       );
       check(
-        one("SELECT 1 FROM recipes WHERE recipe_id=?", b.recipe_id),
+        one(
+          "SELECT 1 FROM recipes WHERE recipe_id=? AND is_approved=1",
+          b.recipe_id,
+        ),
         "Recipe not found",
       );
       run(
@@ -338,7 +500,7 @@ async function handle(req: NextRequest) {
         } else
           rid = Number(
             run(
-              "INSERT INTO recipes(title,description,instructions,prep_time_minutes,cook_time_minutes,servings,calories_per_serving,protein_g,carbs_g,fat_g,cuisine_id,diet_id,created_by,meal_type,image,flavor) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+              "INSERT INTO recipes(title,description,instructions,prep_time_minutes,cook_time_minutes,servings,calories_per_serving,protein_g,carbs_g,fat_g,cuisine_id,diet_id,created_by,is_approved,meal_type,image,flavor) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
               b.title,
               b.description,
               JSON.stringify(b.instructions),
@@ -354,6 +516,7 @@ async function handle(req: NextRequest) {
                 "diet_id",
               ].map((k) => Number(b[k])),
               id,
+              0,
               b.meal_type,
               "",
               "savory",
@@ -367,6 +530,11 @@ async function handle(req: NextRequest) {
             Number(i.quantity),
             "g",
           );
+        if (
+          one("SELECT is_approved FROM recipes WHERE recipe_id=?", rid)
+            ?.is_approved
+        )
+          enqueueVector(Number(rid), "upsert");
       });
     } else if (path === "recipe-delete") {
       check(
@@ -381,7 +549,15 @@ async function handle(req: NextRequest) {
         !one("SELECT 1 FROM meal_plan_recipes WHERE recipe_id=?", b.recipe_id),
         "This recipe is used in a meal plan. Remove it from plans first.",
       );
-      run("DELETE FROM recipes WHERE recipe_id=?", b.recipe_id);
+      transaction(() => {
+        if (
+          one("SELECT is_approved FROM recipes WHERE recipe_id=?", b.recipe_id)
+            ?.is_approved
+        )
+          enqueueVector(Number(b.recipe_id), "delete");
+        run("DELETE FROM recipes WHERE recipe_id=?", b.recipe_id);
+      });
+      await syncOutbox();
     } else if (path === "plan-delete") {
       run(
         "DELETE FROM meal_plans WHERE plan_id=? AND user_id=?",

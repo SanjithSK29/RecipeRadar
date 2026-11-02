@@ -1614,3 +1614,42 @@ input[type="checkbox"] {
     padding: 9px;
   }
 }
+.admin-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--border);
+}
+.admin-row > div {
+  flex: 1;
+}
+.admin-row strong,
+.admin-row span {
+  display: block;
+}
+.admin-row > div > span {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.admin-row .outline,
+.admin-row .primary {
+  padding: 9px 12px;
+}
+.admin-row .diet-badge {
+  position: static;
+  white-space: nowrap;
+}
+.admin-row .text-button {
+  margin: 0;
+}
+@media (max-width: 600px) {
+  .admin-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .admin-row > div {
+    flex-basis: 100%;
+  }
+}

@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 4;
 // Parent-first copy order. Reverse order is used only while replacing v1 tables.
 export const TABLES = [
   "users",
@@ -20,10 +20,12 @@ export const TABLES = [
   "meal_plan_recipes",
   "substitutions",
   "sessions",
+  "vector_sync_outbox",
+  "vector_documents",
 ] as const;
 const quote = (name: string) => '"' + name.replaceAll('"', '""') + '"';
 
-/** Atomic v1 -> v2 migration, with a consistent SQLite backup before replacement.
+/** Atomic v1/v2/v3 -> v4 migration, with a consistent SQLite backup before replacement.
  * Invalid legacy records abort and roll back; they are never silently discarded.
  */
 export function migrate(db: DatabaseSync, filename: string) {
@@ -44,7 +46,7 @@ export function migrate(db: DatabaseSync, filename: string) {
     throw Error("Migration stopped: unexpected tables: " + unknown.join(", "));
   const extras = db
     .prepare(
-      "SELECT name,type FROM sqlite_schema WHERE (type='view') OR (type='trigger' AND name NOT IN ('rating_insert','rating_update','rating_delete')) OR (type='index' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('idx_recipe_ingredient','idx_plan_user'))",
+      "SELECT name,type FROM sqlite_schema WHERE (type='view' AND name NOT IN ('recipe_allergen_details','meal_plan_daily_nutrition','meal_plan_shopping_list')) OR (type='trigger' AND name NOT IN ('rating_insert','rating_update','rating_delete','rating_cache_insert','rating_cache_update','allergen_mapping_insert','allergen_mapping_update','allergen_mapping_delete','allergen_flag_insert','allergen_flag_update','meal_date_insert','meal_date_update','plan_date_update','recipe_steps_insert','recipe_steps_update')) OR (type='index' AND name NOT LIKE 'sqlite_%' AND name NOT IN ('idx_recipe_ingredient','idx_plan_user','idx_user_allergen_reverse','idx_ingredient_allergen_reverse','idx_recipes_creator','idx_recipes_cuisine','idx_recipes_diet','idx_rating_recipe','idx_favorites_recipe','idx_plan_recipe','idx_substitution_target','idx_session_user','idx_session_expiry','idx_vector_outbox_created','idx_vector_payload_diet'))",
     )
     .all();
   if (extras.length)
@@ -58,7 +60,7 @@ export function migrate(db: DatabaseSync, filename: string) {
     mkdirSync(directory, { recursive: true });
     backup = path.join(
       directory,
-      `before-v2-${Date.now()}-${process.pid}.sqlite`,
+      `before-v4-${Date.now()}-${process.pid}.sqlite`,
     );
     // VACUUM INTO includes committed WAL data, unlike copying the main .sqlite file.
     db.prepare("VACUUM INTO ?").run(backup);

@@ -21,6 +21,8 @@ import {
   Star,
   ArrowRight,
   LayoutGrid,
+  Sparkles,
+  Shield,
 } from "lucide-react";
 type Row = Record<string, any>;
 const nav = [
@@ -30,6 +32,7 @@ const nav = [
   ["Ingredient swaps", ArrowLeftRight],
   ["My kitchen", ChefHat],
   ["Preferences", Settings2],
+  ["Flavor search", Sparkles],
 ] as const;
 export default function Home() {
   const [data, setData] = useState<Row>({
@@ -58,6 +61,10 @@ export default function Home() {
   const [register, setRegister] = useState(false);
   const [profile, setProfile] = useState<Row>({});
   const [draft, setDraft] = useState<Row>({});
+  const [vectorQuery, setVectorQuery] = useState("");
+  const [vectorResults, setVectorResults] = useState<Row[]>([]);
+  const [vectorStatus, setVectorStatus] = useState<Row | null>(null);
+  const [adminData, setAdminData] = useState<Row>({ pending: [], users: [] });
   async function load() {
     const r = await fetch("/api/bootstrap");
     if (!r.ok) throw Error("Could not load recipes");
@@ -89,6 +96,22 @@ export default function Home() {
       fetch("/api/substitutions")
         .then((r) => r.json())
         .then(setSwaps);
+    if (tab === "Flavor search" && data.user)
+      fetch("/api/vector")
+        .then(async (r) => {
+          const d = await r.json();
+          if (!r.ok) throw Error(d.error);
+          setVectorStatus(d);
+        })
+        .catch((e) => setNotice(e.message));
+    if (tab === "Admin studio" && data.user?.role === "admin")
+      fetch("/api/admin/recipes")
+        .then(async (r) => {
+          const d = await r.json();
+          if (!r.ok) throw Error(d.error);
+          setAdminData(d);
+        })
+        .catch((e) => setNotice(e.message));
   }, [tab, data.user]);
   async function post(path: string, body: Row, success?: string) {
     setBusy(true);
@@ -109,6 +132,31 @@ export default function Home() {
     } finally {
       setBusy(false);
     }
+  }
+  async function searchByFlavor(e: React.FormEvent) {
+    e.preventDefault();
+    if (authNeeded()) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/vector", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "search", query: vectorQuery }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw Error(d.error);
+      setVectorResults(d.results);
+    } catch (err) {
+      setNotice((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function refreshAdmin() {
+    const r = await fetch("/api/admin/recipes");
+    const d = await r.json();
+    if (r.ok) setAdminData(d);
+    else setNotice(d.error);
   }
   function authNeeded() {
     if (data.user) return false;
@@ -211,6 +259,15 @@ export default function Home() {
               )}
             </button>
           ))}
+          {data.user?.role === "admin" && (
+            <button
+              className={tab === "Admin studio" ? "nav active" : "nav"}
+              onClick={() => setTab("Admin studio")}
+            >
+              <Shield size={19} />
+              Admin studio
+            </button>
+          )}
         </nav>
         <div className="sidebar-note">
           <span className="note-icon">✧</span>
@@ -561,6 +618,221 @@ export default function Home() {
               )}
             </>
           )}
+          {tab === "Flavor search" &&
+            (!data.user ? (
+              <SignIn onClick={() => setModal("auth")} />
+            ) : (
+              <>
+                <div className="info-banner">
+                  <Sparkles size={23} />
+                  <div>
+                    <strong>
+                      Search by the flavors you’re in the mood for.
+                    </strong>
+                    <p>
+                      Find recipes by ingredients, cuisine and curated flavor
+                      relationships in the persistent recipe vector index.
+                    </p>
+                  </div>
+                </div>
+                <form className="panel" onSubmit={searchByFlavor}>
+                  <label>
+                    Describe a flavor, ingredient, or craving
+                    <input
+                      value={vectorQuery}
+                      minLength={2}
+                      maxLength={300}
+                      required
+                      placeholder="creamy, bright chickpea lunch…"
+                      onChange={(e) => setVectorQuery(e.target.value)}
+                    />
+                  </label>
+                  <button className="primary" disabled={busy}>
+                    <Sparkles size={16} />
+                    {busy ? "Searching…" : "Find flavor matches"}
+                  </button>
+                  {vectorStatus && (
+                    <p className="muted">
+                      {vectorStatus.backend} · {vectorStatus.vectors}{" "}
+                      indexed recipes · {vectorStatus.pending} pending sync
+                    </p>
+                  )}
+                </form>
+                {vectorResults.length > 0 && (
+                  <>
+                    <div className="discovery-heading">
+                      <div>
+                        <h2>Your flavor matches</h2>
+                        <p>Ranked by vector similarity.</p>
+                      </div>
+                    </div>
+                    <div className="recipe-grid">
+                      {vectorResults.map((x: Row) => (
+                        <article
+                          className="recipe-card"
+                          key={x.recipe.recipe_id}
+                        >
+                          <div
+                            className="card-image"
+                            onClick={() => openRecipe(x.recipe)}
+                            role="button"
+                            tabIndex={0}
+                          >
+                            {x.recipe.image && (
+                              <img src={x.recipe.image} alt={x.recipe.title} />
+                            )}
+                            <span className="diet-badge">
+                              {Math.round(x.score * 100)}% match
+                            </span>
+                          </div>
+                          <div className="card-body">
+                            <div className="card-category">
+                              {x.recipe.cuisine} · {x.recipe.diet}
+                            </div>
+                            <button
+                              className="recipe-title"
+                              onClick={() => openRecipe(x.recipe)}
+                            >
+                              {x.recipe.title}
+                            </button>
+                            <p>{x.recipe.description}</p>
+                            <span className="muted">
+                              {x.recipe.ingredients
+                                .map((i: Row) => i.name)
+                                .join(" · ")}
+                            </span>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            ))}
+          {tab === "Admin studio" &&
+            (data.user?.role !== "admin" ? (
+              <SignIn onClick={() => setModal("auth")} />
+            ) : (
+              <>
+                <div className="info-banner">
+                  <Shield size={22} />
+                  <div>
+                    <strong>Administrator studio</strong>
+                    <p>
+                      Moderate community recipes, manage roles, and review index
+                      sync.
+                    </p>
+                  </div>
+                </div>
+                <section className="panel">
+                  <div className="section-row">
+                    <h2>Recipe approvals</h2>
+                    <span>{adminData.pending.length} waiting</span>
+                  </div>
+                  {adminData.pending.length === 0 ? (
+                    <p className="muted">All submissions are reviewed.</p>
+                  ) : (
+                    adminData.pending.map((r: Row) => (
+                      <div className="admin-row" key={r.recipe_id}>
+                        <div>
+                          <strong>{r.title}</strong>
+                          <span>
+                            {r.creator} · {r.cuisine} · {r.diet}
+                          </span>
+                        </div>
+                        <button
+                          className="primary"
+                          onClick={async () => {
+                            if (
+                              await post(
+                                "admin/review",
+                                { recipe_id: r.recipe_id, approved: true },
+                                "Recipe approved",
+                              )
+                            )
+                              refreshAdmin();
+                          }}
+                        >
+                          Approve and index
+                        </button>
+                        <button
+                          className="text-button danger"
+                          onClick={async () => {
+                            if (
+                              await post(
+                                "admin/review",
+                                { recipe_id: r.recipe_id, approved: false },
+                                "Recipe rejected",
+                              )
+                            )
+                              refreshAdmin();
+                          }}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </section>
+                <section className="panel">
+                  <div className="section-row">
+                    <h2>Role-based access</h2>
+                    <span>{adminData.users.length} accounts</span>
+                  </div>
+                  {adminData.users.map((u: Row) => (
+                    <div className="admin-row" key={u.user_id}>
+                      <div>
+                        <strong>{u.name}</strong>
+                        <span>{u.email}</span>
+                      </div>
+                      <span className="diet-badge">{u.role}</span>
+                      {u.user_id !== data.user.user_id && (
+                        <button
+                          className="outline"
+                          onClick={async () => {
+                            if (
+                              await post(
+                                "admin/role",
+                                {
+                                  user_id: u.user_id,
+                                  role: u.role === "admin" ? "user" : "admin",
+                                },
+                                "Role updated",
+                              )
+                            )
+                              refreshAdmin();
+                          }}
+                        >
+                          {u.role === "admin" ? "Make user" : "Make admin"}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </section>
+                <section className="panel">
+                  <h2>Recipe vector index</h2>
+                  <p>
+                    Approved SQLite recipes are indexed; synchronization
+                    failures remain queued for retry.
+                  </p>
+                  <button
+                    className="outline"
+                    onClick={async () => {
+                      const r = await fetch("/api/vector");
+                      const d = await r.json();
+                      if (r.ok) {
+                        setVectorStatus(d);
+                        setNotice(
+                          `${d.backend} ready · ${d.vectors} vectors · ${d.pending} pending`,
+                        );
+                      } else setNotice(d.error);
+                    }}
+                  >
+                    Check vector status
+                  </button>
+                </section>
+              </>
+            ))}
           {tab === "Preferences" &&
             (!data.user ? (
               <SignIn onClick={() => setModal("auth")} />

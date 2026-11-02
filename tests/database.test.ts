@@ -77,7 +77,7 @@ test("all application tables are STRICT and database integrity is clean", () => 
     .prepare("PRAGMA table_list")
     .all()
     .filter((t) => !String(t.name).startsWith("sqlite_") && t.type === "table");
-  assert.equal(tables.length, 15);
+  assert.equal(tables.length, 17);
   assert.ok(tables.every((t) => t.strict === 1));
   assert.deepEqual(
     db

@@ -14,6 +14,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
 COPY --from=build /app/db ./db
+COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/lib/sample-steps.json ./lib/sample-steps.json
 RUN mkdir -p data && chown -R node:node /app
 USER node

@@ -6,7 +6,7 @@ Audited against the **modified relational model (PDF page 2)** and **ER diagram 
 
 The implementation preserves **all 13 named domain tables, every displayed attribute, and all 16 domain foreign-key relationships** from the modified relational model. It is **not an identical DDL transcription**: the engine, some constraints, a meal-entry key, fractional planned servings, and small supporting extensions differ intentionally. A database cannot honestly be certified to have “no flaws”; the report records the concrete rules enforced and tests performed.
 
-The first implementation had database-level gaps. Version 2 fixes them and upgrades the existing database transactionally with a consistent backup.
+The first implementation had database-level gaps. Version 4 adds transactional vector persistence and upgrades the existing database transactionally with a consistent backup.
 
 ## Table-by-table mapping
 
@@ -42,19 +42,19 @@ The first implementation had database-level gaps. Version 2 fixes them and upgra
 
 ## Integrity enforced inside the database
 
-- All 15 tables are STRICT. Composite keys and required foreign keys explicitly prohibit NULLs.
+- All 17 tables are STRICT. Composite keys and required foreign keys explicitly prohibit NULLs. `vector_documents` constrains embeddings to valid JSON arrays of exactly 128 values and requires JSON-object payloads.
 - All foreign keys use explicit deletion policies. Recipe ingredients, reviews and favorites cascade when their recipe is deleted; a recipe used in a plan is restricted from deletion. Lookup rows in use cannot be removed. Deleting a user who still owns recipes is restricted.
 - CHECK constraints validate nonempty names, displayed VARCHAR lengths, role/severity values, boolean domains, ratings, quantities, nutrition precision/ranges, nonnegative view counts and times, valid JSON cooking steps and calendar dates.
 - A meal entry must fall within its plan. Updates to meals and plan ranges enforce the same rule.
 - Rating INSERT, UPDATE and DELETE triggers maintain rounded averages. Reassigning a rating updates both old and new recipes. Cache edits cannot manufacture a rating.
 - Mapping INSERT, UPDATE and DELETE triggers maintain allergen flags, including moving a mapping between ingredients.
-- Thirteen explicit secondary indexes support foreign-key child lookups, filters and session cleanup, in addition to automatic primary/unique indexes.
+- Fifteen explicit secondary indexes support foreign-key child lookups, filters, session cleanup, and the JSON diet payload, in addition to automatic primary/unique indexes.
 - SQL views expose ingredient-level allergens, daily nutrition totals and shopping quantities. Shopping quantities divide full-recipe quantities by base recipe servings before scaling planned portions; units are grouped separately.
 - Multi-table recipe writes, profile edits and plan generation run in transactions. Ownership is enforced by the API from authenticated sessions; database foreign keys alone are not per-user authorization.
 
 ## Migration and recovery
 
-`lib/migrations.ts` tracks the schema with `PRAGMA user_version = 2`. A v1 upgrade:
+`lib/migrations.ts` tracks the current schema with `PRAGMA user_version = 4`. Upgrades from supported older versions (v1–v3):
 
 1. Rejects unexpected tables/schema objects rather than deleting unknown data.
 2. Saves a consistent `VACUUM INTO` backup under the database's `backups/` directory, including committed WAL contents.
@@ -82,9 +82,9 @@ The backup command uses SQLite's online backup API. Do not copy only the main `.
 npm run db:audit -- docs/database-verification.json
 ```
 
-Remaining boundaries to understand and explain:
+SQLite has no SQL stored-procedure DDL. Transactional multi-step server functions and connection-registered SQLite UDFs provide the demonstrated procedure/function behavior; do not describe them as native stored procedures. The default vector store persists 128-dimensional JSON vectors in SQLite and performs cosine ranking in the application; optional Qdrant provides a dedicated vector service. Remaining boundaries to understand and explain:
 
-- SQL schema diagrams do not specify a trained semantic recommendation algorithm, clinical nutrition accuracy, admin screens or load guarantees. Curated flavor descriptors and sample nutrition remain demonstration data.
+- The vector layer uses deterministic feature hashing and curated synonyms, not a trained semantic model. Sample nutrition remains demonstration data. Admin moderation and role-management screens are included; the locally retained account remains role=user until its owner deliberately promotes it.
 - Historical plan entries reference live recipes, as in the source model. Recipe edits change their displayed nutrition and shopping totals. Plans are not immutable nutrition snapshots.
 - Allergen exclusion reflects mapped ingredients and the user's preferences when a plan is generated. Changing preferences, mappings or recipes can make an older plan unsuitable; regenerate it. There is no product-label or cross-contact inference.
 - A parent recipe can exist without child ingredients via direct SQL; SQLite has no deferred cross-table assertion enforcing “at least one child at commit.” The application validates and inserts ingredients atomically, and `db:audit` detects empty recipes. It is misleading to claim every possible business invariant is a foreign-key constraint.
@@ -96,4 +96,4 @@ Reference for SQLite's NULL-primary-key behavior and CHECK rules: [SQLite CREATE
 
 ## Recorded verification outcome
 
-On 2 November 2026, all **60 schema/diagram/integrity/migration tests passed**. A production build and TypeScript validation completed successfully. The HTTP integration test passed against the production build on a separate port and a disposable database, leaving the user's live records untouched by that test run. The live database audit reported every recorded check as passing. This is evidence for the exercised rules, not a proof that every possible defect is absent.
+The earlier schema/migration baseline passed 60 automated checks. The current v4 live SQLite audit reports every recorded integrity check as passing, and a production build plus TypeScript validation completed successfully for this final deliverable revision; the optional Qdrant Docker service could not be launched in this environment because access to `/var/run/docker.sock` is denied. These are bounded checks, not proof that every possible defect is absent.

@@ -9,7 +9,8 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "test:api": "node tests/api-smoke.mjs",
     "db:audit": "node --experimental-strip-types scripts/audit-db.mjs",
-    "db:backup": "node scripts/backup-db.mjs"
+    "db:backup": "node scripts/backup-db.mjs",
+    "db:promote-admin": "node scripts/promote-admin.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
