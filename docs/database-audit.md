@@ -4,13 +4,13 @@ Audited against the **modified relational model (PDF page 2)** and **ER diagram 
 
 ## Verdict
 
-The implementation preserves **all 13 named domain tables, every displayed attribute, and all 16 domain foreign-key relationships** from the modified relational model. It is **not an identical DDL transcription**: the engine, some constraints, a meal-entry key, fractional planned servings, and small supporting extensions differ intentionally. A database cannot honestly be certified to have “no flaws”; the report records the concrete rules enforced and tests performed.
+The implementation preserves **all 13 named domain tables, every displayed attribute, and all 16 domain foreign-key relationships** from the modified relational model. It is **not an identical DDL transcription**: some constraints, a meal-entry key, fractional planned servings, and small supporting extensions differ intentionally. A database cannot honestly be certified to have “no flaws”; the report records the concrete rules enforced and tests performed.
 
-The first implementation had database-level gaps. Version 4 adds transactional vector persistence and upgrades the existing database transactionally with a consistent backup.
+The first implementation ran on SQLite, which the course does not allow (PostgreSQL or MySQL is mandatory) and which lacks stored procedures and roles. It has been ported to PostgreSQL; the SQLite files are archived in `db/legacy-sqlite/`.
 
 ## Table-by-table mapping
 
-`db/model-contract.json` records every source attribute. Automated tests check every listed table, attribute and foreign-key edge against SQLite's schema metadata.
+`db/model-contract.json` records every source attribute. Automated checks compare these against the PostgreSQL catalog.
 
 | Source table       | Implemented key                        | Foreign keys                   | Notes                                                                                            |
 | ------------------ | -------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------ |
@@ -30,70 +30,29 @@ The first implementation had database-level gaps. Version 4 adds transactional v
 
 ## Intentional differences and drawing ambiguities
 
-1. **SQLite engine.** The diagram's VARCHAR/DECIMAL/BOOLEAN/DATE/TIMESTAMP labels are expressed with SQLite STRICT-compatible INTEGER/REAL/TEXT plus explicit constraints. VARCHAR lengths, integer domains, boolean values and date validity are enforced rather than relying on SQLite type labels. REAL is binary floating point, not an exact fixed-point DECIMAL implementation; round-to-two-decimal checks constrain inputs. If a course requires a specific DBMS such as MySQL or PostgreSQL, this implementation needs an explicit port and cannot be submitted as that engine.
-2. **Meal-entry key.** The drawing marks `(plan_id, recipe_id)` as a composite key. That prevents a recipe appearing twice in one week and does not stop two different recipes occupying the same slot. The implementation uses `(plan_id, meal_date, meal_type)` to enforce one entry per slot and permit repeated recipes. Include this change in a revised diagram when submitting the implemented design.
-3. **Fractional planned servings.** The source shows INTEGER; the implementation stores positive REAL values to two decimal places. This permits 1.25 servings when scaling calories. Base recipe `servings` remains an integer.
-4. **Ingredient-allergen mapping.** Added `ingredient_allergens(ingredient_id, allergen_id)`. An ingredient boolean alone cannot distinguish milk from peanuts or represent multiple allergens. Both FK columns are NOT NULL; the composite key prevents duplicates.
-5. **Sessions.** Added `sessions(token, user_id, expires_at)` for login state. Only a SHA-256 hash of each random opaque cookie token is stored. This is an infrastructure table, not an invented food-domain entity.
-6. **Display/planning attributes.** Added recipe image, flavor descriptors and meal_type, plus ingredient flavor. Source attributes remain intact.
-7. **Stronger required values.** Some attributes drawn as nullable (for example recipe cuisine/diet/nutrition) are required for this application's filtering and planning. These are stricter application domain decisions, not exact nullability copies.
-8. **ER drawing mismatch.** `favorites` appears in the modified relational model but is absent from the displayed ER drawing; it is implemented. The ER drawing appears to label one recipe-ingredient key `user_id`; the relational model correctly uses `recipe_id`. The implementation follows `recipe_id -> recipes.recipe_id`.
-9. **Derived caches retained.** `avg_rating` and `is_common_allergen` are retained to match source attributes, but SQL triggers derive them from ratings and allergen mappings. Direct inconsistent edits are rejected.
+1. **Types.** The diagram's VARCHAR/DECIMAL/BOOLEAN/DATE/TIMESTAMP labels map to TEXT with length checks, `NUMERIC(p,s)`, `BOOLEAN`, `DATE` and `TIMESTAMPTZ`; money-like nutrition and quantity values are exact decimals.
+2. **Meal-entry key.** The drawing marks `(plan_id, recipe_id)` as a composite key. That prevents a recipe appearing twice in one week and does not stop two recipes occupying one slot. The implementation uses `(plan_id, meal_date, meal_type)`.
+3. **Fractional planned servings.** `servings_planned` is `NUMERIC(6,2)` (the source shows INTEGER) so 1.25 servings can scale calories; base recipe `servings` stays an integer.
+4. **Ingredient-allergen mapping.** Added `ingredient_allergens(ingredient_id, allergen_id)`; a boolean alone cannot say *which* allergen an ingredient contains.
+5. **Support tables.** `sessions` (hashed cookie tokens), `vector_documents` / `vector_sync_outbox` (vector index and durable sync queue) and `audit_log` (trigger-written trail of role and moderation changes) are infrastructure, not invented food-domain entities.
+6. **Display/planning attributes.** Added recipe `image`, `flavor`, `meal_type`, a generated `search_vector` (full-text), and ingredient `flavor`. Source attributes remain intact.
+7. **Stronger required values.** Some attributes drawn as nullable (recipe cuisine/diet/nutrition) are required for filtering and planning.
+8. **New recipes default to unapproved** (`is_approved DEFAULT false`); only an administrator can approve.
+9. **ER drawing mismatch.** `favorites` appears in the relational model but not the ER drawing, and one recipe-ingredient key is labelled `user_id` there; the implementation follows `recipe_id`.
+10. **Derived caches retained.** `avg_rating` and `is_common_allergen` match the source but are derived by triggers; direct inconsistent edits are rejected.
 
 ## Integrity enforced inside the database
 
-- All 17 tables are STRICT. Composite keys and required foreign keys explicitly prohibit NULLs. `vector_documents` constrains embeddings to valid JSON arrays of exactly 128 values and requires JSON-object payloads.
-- All foreign keys use explicit deletion policies. Recipe ingredients, reviews and favorites cascade when their recipe is deleted; a recipe used in a plan is restricted from deletion. Lookup rows in use cannot be removed. Deleting a user who still owns recipes is restricted.
-- CHECK constraints validate nonempty names, displayed VARCHAR lengths, role/severity values, boolean domains, ratings, quantities, nutrition precision/ranges, nonnegative view counts and times, valid JSON cooking steps and calendar dates.
-- A meal entry must fall within its plan. Updates to meals and plan ranges enforce the same rule.
-- Rating INSERT, UPDATE and DELETE triggers maintain rounded averages. Reassigning a rating updates both old and new recipes. Cache edits cannot manufacture a rating.
-- Mapping INSERT, UPDATE and DELETE triggers maintain allergen flags, including moving a mapping between ingredients.
-- Fifteen explicit secondary indexes support foreign-key child lookups, filters, session cleanup, and the JSON diet payload, in addition to automatic primary/unique indexes.
-- SQL views expose ingredient-level allergens, daily nutrition totals and shopping quantities. Shopping quantities divide full-recipe quantities by base recipe servings before scaling planned portions; units are grouped separately.
-- Multi-table recipe writes, profile edits and plan generation run in transactions. Ownership is enforced by the API from authenticated sessions; database foreign keys alone are not per-user authorization.
+- Composite keys and required foreign keys are NOT NULL; every foreign key has an explicit delete policy (cascade for owned rows, restrict for lookups, plan recipes and recipe authors).
+- CHECK constraints validate names, lengths, enumerations, ratings, quantities, nutrition ranges, calendar ranges, JSON cooking steps (trigger) and vector dimension.
+- Triggers: rating averages (insert/update/delete), allergen flags, meal dates inside plan ranges, plans that cannot shrink past meals, last-administrator protection, audit logging.
+- Views: allergen details, daily nutrition, shopping list (serving-scaled), caller-only `my_profile`; the first three use `security_invoker` so row-level security applies.
+- Multi-table writes (recipe edits, profile changes, plan generation, outbox changes) run in transactions; each API request is one transaction.
+
+## Authorization enforced by the database
+
+Roles `rr_guest`, `rr_user`, `rr_admin` (group roles) and the `rr_app` login role; `REVOKE ALL ... FROM PUBLIC` first, then explicit `GRANT`s, column-level grants (users cannot update `role`; only admins can update `is_approved`) and 23 row-level security policies (`pg_policies`). Tests prove a user cannot self-promote, approve recipes, read another user's favorites or plans, or generate a plan for someone else, and that `rr_app` reaches only `users` and `sessions` until it switches role.
 
 ## Migration and recovery
 
-`lib/migrations.ts` tracks the current schema with `PRAGMA user_version = 4`. Upgrades from supported older versions (v1–v3):
-
-1. Rejects unexpected tables/schema objects rather than deleting unknown data.
-2. Saves a consistent `VACUUM INTO` backup under the database's `backups/` directory, including committed WAL contents.
-3. Acquires a write transaction, copies all known table rows, rebuilds the schema and restores every row. Derived caches are recomputed from their source records.
-4. Verifies per-table row counts and foreign keys, then commits the schema version.
-5. On invalid legacy data, rolls back and retains the original database; the error identifies the backup. It never silently drops invalid records.
-
-The original v1 DDL is preserved in `db/migrations/001-original.sql`. Do not apply that file to the current database.
-
-```bash
-npm run db:audit
-npm run db:backup
-npm test
-```
-
-The backup command uses SQLite's online backup API. Do not copy only the main `.sqlite` file while the application is running: committed transactions may still be in `-wal`. To inspect data, use a SQLite-aware client. To restore, stop all application processes, retain the current database and its sidecars, and restore a complete consistent snapshot before restarting; do not swap the file under live connections.
-
-## Verification and remaining boundaries
-
-`tests/database.test.ts` writes directly through SQL to verify constraints, triggers, cascades, views and diagram correspondence. `tests/migrations.test.ts` verifies fresh setup, idempotence, preserving legacy data, independent backup readability, rollback on invalid data and refusal to downgrade newer schemas. `tests/api-smoke.mjs` exercises accounts, authorization, recipe CRUD and allergen-aware planning through HTTP.
-
-`docs/database-verification.json` is a point-in-time audit of the actual local database, with row counts and pass/fail checks. It contains no names, emails, passwords or session tokens. Re-run it after data changes:
-
-```bash
-npm run db:audit -- docs/database-verification.json
-```
-
-SQLite has no SQL stored-procedure DDL. Transactional multi-step server functions and connection-registered SQLite UDFs provide the demonstrated procedure/function behavior; do not describe them as native stored procedures. The default vector store persists 128-dimensional JSON vectors in SQLite and performs cosine ranking in the application; optional Qdrant provides a dedicated vector service. Remaining boundaries to understand and explain:
-
-- The vector layer uses deterministic feature hashing and curated synonyms, not a trained semantic model. Sample nutrition remains demonstration data. Admin moderation and role-management screens are included; the locally retained account remains role=user until its owner deliberately promotes it.
-- Historical plan entries reference live recipes, as in the source model. Recipe edits change their displayed nutrition and shopping totals. Plans are not immutable nutrition snapshots.
-- Allergen exclusion reflects mapped ingredients and the user's preferences when a plan is generated. Changing preferences, mappings or recipes can make an older plan unsuitable; regenerate it. There is no product-label or cross-contact inference.
-- A parent recipe can exist without child ingredients via direct SQL; SQLite has no deferred cross-table assertion enforcing “at least one child at commit.” The application validates and inserts ingredients atomically, and `db:audit` detects empty recipes. It is misleading to claim every possible business invariant is a foreign-key constraint.
-- Diet category follows the source's single `diet_id`; overlapping classifications (for example vegan AND high-protein) would require a separately agreed many-to-many redesign.
-- STRICT validates lossless storage types, not the original textual representation. Numeric text that can be losslessly converted can be accepted by SQLite.
-- SQLite is appropriate for a local single-server academic project. No large-scale concurrency benchmark, exact DECIMAL storage, MySQL compatibility or clinical validation is claimed.
-
-Reference for SQLite's NULL-primary-key behavior and CHECK rules: [SQLite CREATE TABLE](https://www.sqlite.org/lang_createtable.html). STRICT type behavior: [SQLite STRICT tables](https://www.sqlite.org/stricttables.html).
-
-## Recorded verification outcome
-
-The earlier schema/migration baseline passed 60 automated checks. The current v4 live SQLite audit reports every recorded integrity check as passing, and a production build plus TypeScript validation completed successfully for this final deliverable revision; the optional Qdrant Docker service could not be launched in this environment because access to `/var/run/docker.sock` is denied. These are bounded checks, not proof that every possible defect is absent.
+Versioned SQL files in `db/migrations/` are applied in order by `scripts/migrate.mjs` (each in a transaction, recorded in `schema_migrations`). `npm run db:backup` takes a `pg_dump`. Moving existing SQLite data is not automated: the SQLite database held demonstration data only.

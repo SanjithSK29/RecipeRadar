@@ -1,145 +1,238 @@
 {
-  "checkedAt": "2026-11-02T09:51:11.551Z",
-  "database": "data/reciperadar.sqlite",
-  "version": 4,
+  "checkedAt": "2026-11-02T14:43:02.181Z",
+  "server": "PostgreSQL 18.6 on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 7.5.0-3ubuntu1~18.04) 7.5.0, 64-bit",
   "ok": true,
   "checks": {
-    "integrity": true,
-    "foreignKeysEnabled": true,
-    "foreignKeys": true,
-    "schemaVersion": true,
-    "strictTables": true,
     "ratingCaches": true,
     "allergenCaches": true,
     "mealDateRanges": true,
     "recipesHaveIngredients": true,
     "noCaseDuplicateEmails": true,
-    "noSelfSubstitutions": true
+    "noSelfSubstitutions": true,
+    "atLeastOneAdmin": true,
+    "approvedRecipesIndexed": true,
+    "rlsEnabledOnUserData": true
   },
+  "migrations": [
+    "001_schema.sql",
+    "002_routines.sql",
+    "003_full_text_search.sql",
+    "004_roles_and_security.sql"
+  ],
   "tables": [
     {
-      "name": "users",
-      "rows": 4,
-      "foreignKeys": 0
+      "name": "allergens",
+      "approx_rows": "-1",
+      "foreign_keys": "0"
     },
     {
-      "name": "allergens",
-      "rows": 9,
-      "foreignKeys": 0
+      "name": "audit_log",
+      "approx_rows": "-1",
+      "foreign_keys": "0"
     },
     {
       "name": "cuisines",
-      "rows": 6,
-      "foreignKeys": 0
+      "approx_rows": "-1",
+      "foreign_keys": "0"
     },
     {
       "name": "dietary_types",
-      "rows": 4,
-      "foreignKeys": 0
-    },
-    {
-      "name": "ingredients",
-      "rows": 25,
-      "foreignKeys": 0
-    },
-    {
-      "name": "recipes",
-      "rows": 12,
-      "foreignKeys": 3
-    },
-    {
-      "name": "ingredient_allergens",
-      "rows": 10,
-      "foreignKeys": 2
-    },
-    {
-      "name": "user_allergens",
-      "rows": 6,
-      "foreignKeys": 2
-    },
-    {
-      "name": "recipe_ingredients",
-      "rows": 44,
-      "foreignKeys": 2
-    },
-    {
-      "name": "ratings",
-      "rows": 3,
-      "foreignKeys": 2
+      "approx_rows": "-1",
+      "foreign_keys": "0"
     },
     {
       "name": "favorites",
-      "rows": 6,
-      "foreignKeys": 2
+      "approx_rows": "-1",
+      "foreign_keys": "2"
     },
     {
-      "name": "meal_plans",
-      "rows": 1,
-      "foreignKeys": 1
+      "name": "ingredient_allergens",
+      "approx_rows": "-1",
+      "foreign_keys": "2"
+    },
+    {
+      "name": "ingredients",
+      "approx_rows": "-1",
+      "foreign_keys": "0"
     },
     {
       "name": "meal_plan_recipes",
-      "rows": 21,
-      "foreignKeys": 2
+      "approx_rows": "-1",
+      "foreign_keys": "2"
     },
     {
-      "name": "substitutions",
-      "rows": 6,
-      "foreignKeys": 2
+      "name": "meal_plans",
+      "approx_rows": "-1",
+      "foreign_keys": "1"
+    },
+    {
+      "name": "ratings",
+      "approx_rows": "-1",
+      "foreign_keys": "2"
+    },
+    {
+      "name": "recipe_ingredients",
+      "approx_rows": "-1",
+      "foreign_keys": "2"
+    },
+    {
+      "name": "recipes",
+      "approx_rows": "-1",
+      "foreign_keys": "3"
+    },
+    {
+      "name": "schema_migrations",
+      "approx_rows": "-1",
+      "foreign_keys": "0"
     },
     {
       "name": "sessions",
-      "rows": 2,
-      "foreignKeys": 1
+      "approx_rows": "-1",
+      "foreign_keys": "1"
     },
     {
-      "name": "vector_sync_outbox",
-      "rows": 0,
-      "foreignKeys": 0
+      "name": "substitutions",
+      "approx_rows": "-1",
+      "foreign_keys": "2"
+    },
+    {
+      "name": "user_allergens",
+      "approx_rows": "-1",
+      "foreign_keys": "2"
+    },
+    {
+      "name": "users",
+      "approx_rows": "-1",
+      "foreign_keys": "0"
     },
     {
       "name": "vector_documents",
-      "rows": 12,
-      "foreignKeys": 1
+      "approx_rows": "-1",
+      "foreign_keys": "1"
+    },
+    {
+      "name": "vector_sync_outbox",
+      "approx_rows": "-1",
+      "foreign_keys": "0"
     }
   ],
   "indexes": [
-    "idx_user_allergen_reverse",
+    "allergens_name_lower_key",
+    "allergens_pkey",
+    "audit_log_pkey",
+    "cuisines_name_lower_key",
+    "cuisines_pkey",
+    "dietary_types_name_lower_key",
+    "dietary_types_pkey",
+    "favorites_pkey",
+    "idx_audit_table_record",
+    "idx_favorites_recipe",
     "idx_ingredient_allergen_reverse",
+    "idx_plan_recipe",
+    "idx_plan_user",
+    "idx_rating_recipe",
     "idx_recipe_ingredient",
     "idx_recipes_creator",
     "idx_recipes_cuisine",
     "idx_recipes_diet",
-    "idx_rating_recipe",
-    "idx_favorites_recipe",
-    "idx_plan_user",
-    "idx_plan_recipe",
-    "idx_substitution_target",
-    "idx_session_user",
+    "idx_recipes_search",
     "idx_session_expiry",
+    "idx_session_user",
+    "idx_substitution_target",
+    "idx_user_allergen_reverse",
     "idx_vector_outbox_created",
-    "idx_vector_payload_diet"
+    "idx_vector_payload_diet",
+    "ingredient_allergens_pkey",
+    "ingredients_name_lower_key",
+    "ingredients_pkey",
+    "meal_plan_recipes_pkey",
+    "meal_plans_pkey",
+    "ratings_pkey",
+    "recipe_ingredients_pkey",
+    "recipes_pkey",
+    "schema_migrations_pkey",
+    "sessions_pkey",
+    "substitutions_pkey",
+    "user_allergens_pkey",
+    "users_email_lower_key",
+    "users_pkey",
+    "vector_documents_pkey",
+    "vector_sync_outbox_pkey",
+    "vector_sync_outbox_recipe_id_operation_key"
   ],
   "triggers": [
-    "rating_insert",
-    "rating_update",
-    "rating_delete",
-    "rating_cache_insert",
-    "rating_cache_update",
-    "allergen_mapping_insert",
-    "allergen_mapping_update",
-    "allergen_mapping_delete",
-    "allergen_flag_insert",
-    "allergen_flag_update",
-    "meal_date_insert",
-    "meal_date_update",
-    "plan_date_update",
-    "recipe_steps_insert",
-    "recipe_steps_update"
+    "ingredient_allergens_refresh_flag",
+    "ingredients_guard_flag_insert",
+    "ingredients_guard_flag_update",
+    "meal_plan_recipes_date_check",
+    "meal_plans_range_check",
+    "ratings_refresh_avg",
+    "recipes_audit_moderation",
+    "recipes_check_steps",
+    "recipes_guard_avg_insert",
+    "recipes_guard_avg_update",
+    "users_audit_role",
+    "users_protect_last_admin"
   ],
   "views": [
-    "recipe_allergen_details",
     "meal_plan_daily_nutrition",
-    "meal_plan_shopping_list"
+    "meal_plan_shopping_list",
+    "my_profile",
+    "recipe_allergen_details"
+  ],
+  "routines": [
+    "fn_cosine_similarity",
+    "fn_flavor_similarity",
+    "fn_portion_calories",
+    "fn_rate_recipe",
+    "fn_recipe_allergens",
+    "fn_safe_recipes",
+    "fn_search_recipes",
+    "fn_search_vectors",
+    "rr_uid",
+    "sp_generate_meal_plan (procedure)"
+  ],
+  "roles": [
+    {
+      "rolname": "rr_admin",
+      "can_login": false
+    },
+    {
+      "rolname": "rr_app",
+      "can_login": true
+    },
+    {
+      "rolname": "rr_guest",
+      "can_login": false
+    },
+    {
+      "rolname": "rr_user",
+      "can_login": false
+    }
+  ],
+  "policies": [
+    "favorites.favorites_own",
+    "meal_plan_recipes.meal_plan_recipes_own",
+    "meal_plans.meal_plans_own",
+    "ratings.ratings_delete_own",
+    "ratings.ratings_insert_own",
+    "ratings.ratings_read",
+    "ratings.ratings_update_own",
+    "recipe_ingredients.recipe_ingredients_read",
+    "recipe_ingredients.recipe_ingredients_write_admin",
+    "recipe_ingredients.recipe_ingredients_write_own",
+    "recipes.recipes_delete_admin",
+    "recipes.recipes_delete_own",
+    "recipes.recipes_insert_own",
+    "recipes.recipes_read_admin",
+    "recipes.recipes_read_approved",
+    "recipes.recipes_read_own",
+    "recipes.recipes_update_admin",
+    "recipes.recipes_update_own",
+    "user_allergens.user_allergens_own",
+    "users.users_read",
+    "users.users_register",
+    "users.users_update_admin",
+    "users.users_update_self"
   ]
 }

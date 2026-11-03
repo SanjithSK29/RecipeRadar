@@ -1,0 +1,28 @@
+✔ migrations are recorded, idempotent, and create the expected objects (594.197521ms)
+✔ constraints: CHECK, UNIQUE (case-insensitive email), NOT NULL, FK (24.013121ms)
+✔ referential actions: cascade vs restrict (16.85249ms)
+✔ trigger: avg_rating follows ratings (insert, update, delete) and cannot be forged (19.931463ms)
+✔ trigger: ingredients.is_common_allergen follows allergen mappings (6.004341ms)
+✔ trigger: meal dates stay inside the plan and plans cannot shrink past meals (9.219112ms)
+✔ trigger: the last administrator cannot be demoted; role changes are audited (10.491839ms)
+✔ functions: portion calories, flavor similarity, cosine similarity, allergen lookup (10.306323ms)
+✔ stored procedure sp_generate_meal_plan: 21 meals, diet + allergen aware, calorie targeted (24.633632ms)
+✔ vector search inside PostgreSQL ranks by cosine similarity (42.816515ms)
+✔ full-text search (ALTER-added tsvector + GIN index) (14.968878ms)
+✔ DDL: CREATE / ALTER / DROP lifecycle on a scratch table (16.055196ms)
+✔ rr_guest is read-only and cannot see unapproved recipes or password hashes (20.531199ms)
+✔ rr_user: sees and changes only its own rows (row-level security) (12.083542ms)
+✔ rr_user cannot self-promote, moderate, or read the audit log (8.006407ms)
+✔ rr_user cannot create approved recipes or plan meals for someone else (4.219172ms)
+✔ rr_admin can moderate recipes and manage roles; actions are audited with the actor (12.874472ms)
+✔ rr_app (login role) reaches only users + sessions until it switches role (22.168742ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1160.896283
+API smoke passed: accounts, sessions, ownership, favorites, rating validation, allergen-aware planning, calorie totals, recipe CRUD and plan deletion.
+RBAC smoke passed: guest/user/admin roles, moderation + audit, vector RUD, full-text search, last-admin rule.
