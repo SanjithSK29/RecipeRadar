@@ -6,18 +6,21 @@ OUT=ROOT/'docs/figures';OUT.mkdir(parents=True,exist_ok=True)
 FONT='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'; BOLD='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
 ft=ImageFont.truetype(BOLD,19); fb=ImageFont.truetype(FONT,15); fm=ImageFont.truetype(BOLD,15); fs=ImageFont.truetype(FONT,13)
 data=json.loads((ROOT/'db/model-contract.json').read_text())
-extra={'ingredient_allergens':['ingredient_id PK,FK','allergen_id PK,FK'],'sessions':['token PK','user_id FK','expires_at'],'vector_sync_outbox':['outbox_id PK','recipe_id','operation','payload JSON','attempts','last_error'],'vector_documents':['recipe_id PK,FK','embedding JSON[128]','payload JSON','updated_at']}
-db=__import__('sqlite3').connect(ROOT/'data/reciperadar.sqlite')
-tables=[r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
+extra={'ingredient_allergens':['ingredient_id PK,FK','allergen_id PK,FK'],'sessions':['token PK','user_id FK','expires_at'],'vector_sync_outbox':['outbox_id PK','recipe_id','operation','payload JSON','attempts','last_error'],'vector_documents':['recipe_id PK,FK','embedding float8[128]','payload JSONB','updated_at']}
+import subprocess,csv,io,os
+def q(sql):
+ out=subprocess.run(['psql',os.environ['DATABASE_ADMIN_URL'],'-X','--csv','-t','-c',sql],capture_output=True,text=True,check=True).stdout
+ return list(csv.reader(io.StringIO(out)))
 attrs={}
-for table in tables:
- info=db.execute(f'PRAGMA table_info("{table}")').fetchall()
- fks=db.execute(f'PRAGMA foreign_key_list("{table}")').fetchall()
- pk={r[1] for r in info if r[5]}
- fk={r[3] for r in fks}
- attrs[table]=[r[1]+(' PK' if r[1] in pk else '')+(' FK' if r[1] in fk else '') for r in info]
+for table,col,pk,fk in q("""select c.relname,a.attname,
+ exists(select 1 from pg_constraint k where k.conrelid=c.oid and k.contype='p' and a.attnum=any(k.conkey)),
+ exists(select 1 from pg_constraint k where k.conrelid=c.oid and k.contype='f' and a.attnum=any(k.conkey))
+ from pg_class c join pg_namespace n on n.oid=c.relnamespace
+ join pg_attribute a on a.attrelid=c.oid and a.attnum>0 and not a.attisdropped
+ where n.nspname='public' and c.relkind='r' and c.relname<>'schema_migrations' order by c.relname,a.attnum"""):
+ attrs.setdefault(table,[]).append(col+(' PK' if pk=='t' else '')+(' FK' if fk=='t' else ''))
 # Full relational schema card sheet, on a clean light background.
-W,H=2320,2070; im=Image.new('RGB',(W,H),'#f7f8f4');d=ImageDraw.Draw(im);d.text((58,30),'RecipeRadar relational schema',font=ImageFont.truetype(BOLD,34),fill='#294f3f');d.text((58,78),'17 STRICT tables · primary keys (PK) · foreign keys (FK) · composite keys shown on their components',font=fb,fill='#738073')
+W,H=2320,2070 if len(attrs)<=20 else 2450; im=Image.new('RGB',(W,H),'#f7f8f4');d=ImageDraw.Draw(im);d.text((58,30),'RecipeRadar relational schema',font=ImageFont.truetype(BOLD,34),fill='#294f3f');d.text((58,78),f'{len(attrs)} PostgreSQL tables · primary keys (PK) · foreign keys (FK) · composite keys shown on their components',font=fb,fill='#738073')
 cols=4;cw=540;ch=355;gx=28;gy=27;startx=58;starty=130
 cards=list(attrs.items())
 relations=[('users','user_allergens'),('allergens','user_allergens'),('ingredients','ingredient_allergens'),('allergens','ingredient_allergens'),('users','recipes'),('cuisines','recipes'),('dietary_types','recipes'),('recipes','recipe_ingredients'),('ingredients','recipe_ingredients'),('users','ratings'),('recipes','ratings'),('users','favorites'),('recipes','favorites'),('users','meal_plans'),('meal_plans','meal_plan_recipes'),('recipes','meal_plan_recipes'),('ingredients','substitutions'),('recipes','vector_documents'),('recipes','vector_sync_outbox'),('users','sessions')]

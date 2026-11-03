@@ -1,16 +1,13 @@
-import { DatabaseSync, backup } from "node:sqlite";
+// Plain-SQL backup of the database with pg_dump:  npm run db:backup
+import { spawnSync } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import path from "node:path";
-const source =
-  process.env.DATABASE_PATH ||
-  path.join(process.cwd(), "data/reciperadar.sqlite");
-const directory = path.join(path.dirname(source), "backups");
-mkdirSync(directory, { recursive: true });
-const target = path.join(directory, `snapshot-${Date.now()}.sqlite`);
-const db = new DatabaseSync(source, { readOnly: true });
-try {
-  await backup(db, target);
-  console.log(target);
-} finally {
-  db.close();
-}
+if (!process.env.DATABASE_ADMIN_URL) throw Error("DATABASE_ADMIN_URL is not set");
+mkdirSync("backups", { recursive: true });
+const target = `backups/reciperadar-${Date.now()}.sql`;
+const result = spawnSync(
+  "pg_dump",
+  ["--no-owner", "--file", target, process.env.DATABASE_ADMIN_URL],
+  { stdio: "inherit" },
+);
+if (result.status !== 0) process.exit(result.status ?? 1);
+console.log(target);
